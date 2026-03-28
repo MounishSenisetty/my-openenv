@@ -1,0 +1,157 @@
+name: ai-customer-support-resolution
+version: "1.0.0"
+description: >
+  An OpenEnv environment that simulates a real-world AI customer support
+  resolution workflow. An agent reads support tickets and must classify,
+  resolve, escalate, or close them using a structured action space.
+  Graded on correctness, sequence quality, and efficiency.
+
+author: OpenEnv Submission
+license: MIT
+
+# ── Runtime ──────────────────────────────────────────────────────────────────
+server:
+  framework: fastapi
+  entry: app.main:app
+  host: 0.0.0.0
+  port: 7860
+
+# ── Observation schema ───────────────────────────────────────────────────────
+observation:
+  type: object
+  properties:
+    ticket_id:          { type: string }
+    customer_message:   { type: string }
+    customer_history:   { type: array, items: { type: string } }
+    sentiment:          { type: string, enum: [positive, neutral, negative, angry] }
+    current_status:     { type: string, enum: [open, in_progress, escalated, resolved, closed] }
+    steps_taken:        { type: array, items: { type: string } }
+    available_actions:  { type: array, items: { type: string } }
+    sla_steps_remaining:{ type: integer }
+    info_message:       { type: string, nullable: true }
+
+# ── Action schema ────────────────────────────────────────────────────────────
+action:
+  type: object
+  required: [action_type]
+  properties:
+    action_type:
+      type: string
+      enum:
+        - classify_billing
+        - classify_technical
+        - classify_refund
+        - classify_general
+        - request_more_info
+        - issue_refund
+        - apply_billing_credit
+        - restart_service
+        - send_technical_guide
+        - reset_password
+        - escalate_to_human
+        - close_ticket
+    reasoning:
+      type: string
+      nullable: true
+
+# ── Reward schema ────────────────────────────────────────────────────────────
+reward:
+  type: object
+  properties:
+    step_reward:        { type: number }
+    cumulative_reward:  { type: number }
+    done:               { type: boolean }
+    score:              { type: number, minimum: 0.0, maximum: 1.0 }
+    feedback:           { type: string }
+
+# ── API endpoints ─────────────────────────────────────────────────────────────
+endpoints:
+  reset:
+    method: POST
+    path: /reset
+    request:
+      type: object
+      properties:
+        task_id: { type: string, nullable: true }
+    response: ResetResponse
+
+  step:
+    method: POST
+    path: /step
+    request: Action
+    response: StepResponse
+
+  state:
+    method: GET
+    path: /state
+    response: StateResponse
+
+# ── Tasks ─────────────────────────────────────────────────────────────────────
+tasks:
+  - id: task_1_classify
+    difficulty: easy
+    description: Classify a billing ticket correctly in the first action.
+    max_steps: 3
+    score_range: [0.0, 1.0]
+
+  - id: task_1b_classify_technical
+    difficulty: easy
+    description: Classify a technical issue ticket correctly.
+    max_steps: 3
+    score_range: [0.0, 1.0]
+
+  - id: task_1c_classify_refund
+    difficulty: easy
+    description: Classify a refund request ticket correctly.
+    max_steps: 3
+    score_range: [0.0, 1.0]
+
+  - id: task_2_resolution_path
+    difficulty: medium
+    description: Execute the correct classify → resolve → close sequence for a billing dispute.
+    max_steps: 5
+    score_range: [0.0, 1.0]
+
+  - id: task_2b_technical_path
+    difficulty: medium
+    description: Execute the correct classify → fix → close sequence for a login issue.
+    max_steps: 5
+    score_range: [0.0, 1.0]
+
+  - id: task_3_multistep_angry_refund
+    difficulty: hard
+    description: >
+      Handle an angry customer demanding a refund after a prolonged outage.
+      Requires classification, escalation, refund, and clean closure.
+      Efficiency penalised.
+    max_steps: 8
+    sla_steps: 6
+    score_range: [0.0, 1.0]
+
+  - id: task_3b_multistep_technical_enterprise
+    difficulty: hard
+    description: >
+      Resolve a high-priority enterprise API outage.
+      Classify, escalate, restart service, close.
+    max_steps: 8
+    sla_steps: 5
+    score_range: [0.0, 1.0]
+
+  - id: task_3c_ambiguous_ticket
+    difficulty: hard
+    description: >
+      Handle an ambiguous ticket. Classify as general, gather more info, close cleanly.
+    max_steps: 6
+    sla_steps: 4
+    score_range: [0.0, 1.0]
+
+# ── Resource requirements ──────────────────────────────────────────────────────
+resources:
+  cpu: 2
+  memory_gb: 2
+  gpu: false
+
+# ── Reproducibility ────────────────────────────────────────────────────────────
+reproducibility:
+  deterministic: true
+  seed: 42
