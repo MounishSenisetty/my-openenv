@@ -1,3 +1,13 @@
+---
+title: Myenv
+emoji: "🐠"
+colorFrom: indigo
+colorTo: red
+sdk: docker
+pinned: false
+short_description: "TinyCoders"
+---
+
 # 🎫 AI Customer Support Resolution Environment
 
 An **OpenEnv-compatible reinforcement-learning environment** that simulates a
