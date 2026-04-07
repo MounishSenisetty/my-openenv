@@ -52,6 +52,23 @@ class ResetRequest(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
+@app.get("/")
+def root():
+    """Root endpoint with links to API docs and core routes."""
+    return {
+        "title": "AI Customer Support Resolution Environment",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "openapi": "/openapi.json",
+        "endpoints": {
+            "health": "/health",
+            "tasks": "/tasks",
+            "reset": "/reset",
+            "step": "/step",
+            "state": "/state",
+        },
+    }
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
