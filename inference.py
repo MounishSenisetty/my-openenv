@@ -1,259 +1,165 @@
-"""
-inference.py — Baseline agent for the AI Customer Support Resolution Environment.
+"""Baseline inference runner with strict OpenEnv evaluation log format."""
 
-Uses an LLM (via OpenAI-compatible API) to act as the support agent.
-Runs all tasks and reports per-task and aggregate scores.
-
-Environment variables
----------------------
-API_BASE_URL  : Base URL for the OpenAI-compatible endpoint
-                Default: http://localhost:8000   (local FastAPI server)
-MODEL_NAME    : Model identifier passed to the LLM
-                Default: gpt-4o-mini
-HF_TOKEN      : Bearer token for Hugging Face Inference Endpoints (optional)
-
-Usage
------
-  python inference.py
-  API_BASE_URL=https://my-hf-space.hf.space MODEL_NAME=mistral python inference.py
-"""
-
-import os
 import json
+import os
 import time
+from typing import List, Optional
+
 import requests
-from typing import Optional
-
-# ---------------------------------------------------------------------------
-# Config from environment variables
-# ---------------------------------------------------------------------------
-
-ENV_BASE_URL  = os.getenv("ENV_BASE_URL", "http://localhost:8000")   # FastAPI env server
-LLM_BASE_URL  = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME    = os.getenv("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN      = os.getenv("HF_TOKEN", "")
-
-HEADERS = {"Content-Type": "application/json"}
-if HF_TOKEN:
-    HEADERS["Authorization"] = f"Bearer {HF_TOKEN}"
-
-MAX_RETRIES = 3
-STEP_DELAY  = 0.5   # seconds between steps (rate-limit courtesy)
+from openai import OpenAI
 
 
-# ---------------------------------------------------------------------------
-# OpenAI-compatible LLM client
-# ---------------------------------------------------------------------------
-
-def call_llm(system_prompt: str, user_prompt: str) -> str:
-    """Call the LLM and return the text response."""
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt},
-        ],
-        "temperature": 0.0,
-        "max_tokens": 256,
-    }
-    llm_headers = {"Content-Type": "application/json"}
-    if HF_TOKEN:
-        llm_headers["Authorization"] = f"Bearer {HF_TOKEN}"
-
-    for attempt in range(MAX_RETRIES):
-        try:
-            resp = requests.post(
-                f"{LLM_BASE_URL}/chat/completions",
-                json=payload,
-                headers=llm_headers,
-                timeout=60,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            if attempt == MAX_RETRIES - 1:
-                raise
-            print(f"  [LLM retry {attempt+1}] {e}")
-            time.sleep(2)
+API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN")
+API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
+MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+ENV_BASE_URL = os.getenv("ENV_BASE_URL") or "http://localhost:7860"
+BENCHMARK = "ai-customer-support-resolution"
+MAX_STEPS = 10
+TEMPERATURE = 0.0
+MAX_TOKENS = 128
 
 
-# ---------------------------------------------------------------------------
-# Environment client helpers
-# ---------------------------------------------------------------------------
-
-def env_reset(task_id: Optional[str] = None) -> dict:
-    payload = {"task_id": task_id} if task_id else {}
-    r = requests.post(f"{ENV_BASE_URL}/reset", json=payload, timeout=30)
-    r.raise_for_status()
-    return r.json()
+SYSTEM_PROMPT = (
+    "You are an AI customer support agent. Return exactly one action_type string "
+    "from available_actions and nothing else."
+)
 
 
-def env_step(action_type: str, reasoning: str = "") -> dict:
-    payload = {"action_type": action_type, "reasoning": reasoning}
-    r = requests.post(f"{ENV_BASE_URL}/step", json=payload, timeout=30)
-    r.raise_for_status()
-    return r.json()
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
 
 
-def env_get_tasks() -> list:
-    r = requests.get(f"{ENV_BASE_URL}/tasks", timeout=15)
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}",
+        flush=True,
+    )
+
+
+def env_get_tasks() -> List[dict]:
+    r = requests.get(f"{ENV_BASE_URL}/tasks", timeout=30)
     r.raise_for_status()
     return r.json()["tasks"]
 
 
-# ---------------------------------------------------------------------------
-# System prompt for the agent
-# ---------------------------------------------------------------------------
-
-SYSTEM_PROMPT = """
-You are an AI customer support agent operating inside an automated support system.
-
-Your job: read the customer's ticket and choose the single best action from the
-AVAILABLE ACTIONS list to progress toward resolving the issue.
-
-IMPORTANT RULES:
-1. Reply with ONLY the action name (e.g. classify_billing). No explanation, no quotes.
-2. Choose from the available_actions list provided.
-3. Follow this general strategy:
-   - First, classify the ticket (classify_billing / classify_technical / classify_refund / classify_general)
-   - Then, take the most appropriate resolution action
-   - If the issue is complex or the customer is very angry and escalation is warranted, escalate
-   - Finally, close_ticket when resolved
-
-Action reference:
-  classify_billing       → ticket is about billing/payments
-  classify_technical     → ticket is about technical/product issue
-  classify_refund        → ticket is about requesting a refund
-  classify_general       → ticket type is ambiguous or general
-  request_more_info      → need more details from the customer
-  issue_refund           → process a monetary refund
-  apply_billing_credit   → apply credit to the account
-  restart_service        → restart or reset the customer's service
-  send_technical_guide   → send troubleshooting documentation
-  reset_password         → trigger a password reset
-  escalate_to_human      → hand off to a human agent (use sparingly)
-  close_ticket           → mark the ticket as resolved and close it
-""".strip()
+def env_reset(task_id: str) -> dict:
+    r = requests.post(f"{ENV_BASE_URL}/reset", json={"task_id": task_id}, timeout=30)
+    r.raise_for_status()
+    return r.json()
 
 
-def build_user_prompt(obs: dict, task_description: str) -> str:
-    return f"""
-TASK: {task_description}
-
-TICKET ID: {obs['ticket_id']}
-CUSTOMER MESSAGE: {obs['customer_message']}
-CUSTOMER HISTORY: {json.dumps(obs['customer_history'], indent=2)}
-SENTIMENT: {obs['sentiment']}
-STATUS: {obs['current_status']}
-STEPS TAKEN: {obs['steps_taken']}
-SLA STEPS REMAINING: {obs['sla_steps_remaining']}
-AVAILABLE ACTIONS: {obs['available_actions']}
-LAST FEEDBACK: {obs.get('info_message', 'None')}
-
-Choose your next action:
-""".strip()
+def env_step(action_type: str) -> dict:
+    r = requests.post(
+        f"{ENV_BASE_URL}/step",
+        json={"action_type": action_type, "reasoning": "baseline inference"},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
 
 
-# ---------------------------------------------------------------------------
-# Single-task runner
-# ---------------------------------------------------------------------------
+def build_user_prompt(observation: dict, task_description: str) -> str:
+    return (
+        f"Task: {task_description}\n"
+        f"Ticket: {observation['customer_message']}\n"
+        f"Sentiment: {observation['sentiment']}\n"
+        f"Status: {observation['current_status']}\n"
+        f"Steps taken: {observation['steps_taken']}\n"
+        f"SLA remaining: {observation['sla_steps_remaining']}\n"
+        f"Available actions: {observation['available_actions']}\n"
+        "Return only the next action_type token."
+    )
 
-def run_task(task: dict) -> dict:
+
+def choose_action(client: OpenAI, observation: dict, task_description: str) -> str:
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_user_prompt(observation, task_description)},
+        ],
+        temperature=TEMPERATURE,
+        max_tokens=MAX_TOKENS,
+        stream=False,
+    )
+    text = (response.choices[0].message.content or "").strip()
+    cleaned = text.strip().strip('"\'').lower().replace(" ", "_")
+    return cleaned
+
+
+def run_task(client: OpenAI, task: dict) -> dict:
     task_id = task["task_id"]
-    print(f"\n{'='*60}")
-    print(f"Task: {task_id} | Difficulty: {task['difficulty']}")
-    print(f"Description: {task['description'][:80]}...")
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
-    # Reset environment
-    reset_resp = env_reset(task_id)
-    obs = reset_resp["observation"]
-    task_description = reset_resp["task_description"]
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
+    last_error: Optional[str] = None
 
-    episode_done = False
-    final_score = 0.0
-    steps = 0
+    try:
+        reset_data = env_reset(task_id)
+        observation = reset_data["observation"]
+        task_description = reset_data["task_description"]
 
-    while not episode_done:
-        # Build prompt and call LLM
-        user_prompt = build_user_prompt(obs, task_description)
-        action_type = call_llm(SYSTEM_PROMPT, user_prompt)
+        for step_num in range(1, MAX_STEPS + 1):
+            action = choose_action(client, observation, task_description)
 
-        # Clean up model output (strip whitespace, quotes)
-        action_type = action_type.strip().strip('"\'').lower().replace(" ", "_")
-        print(f"  Step {steps+1}: {action_type}")
+            try:
+                step_data = env_step(action)
+                reward = float(step_data.get("reward", 0.0))
+                done = bool(step_data.get("done", False))
+                observation = step_data["observation"]
+                score = float(step_data.get("score", 0.0))
+                last_error = None
+            except Exception as exc:
+                reward = 0.0
+                done = True
+                last_error = str(exc)
 
-        # Execute action
-        step_resp = env_step(action_type)
-        obs = step_resp["observation"]
-        reward = step_resp["reward"]
+            rewards.append(reward)
+            steps_taken = step_num
+            log_step(step=step_num, action=action, reward=reward, done=done, error=last_error)
 
-        print(f"    reward={reward['step_reward']:+.3f}  cumulative={reward['cumulative_reward']:+.3f}")
+            if done:
+                break
 
-        episode_done = reward["done"]
-        final_score = reward["score"]
-        steps += 1
+            time.sleep(0.2)
 
-        time.sleep(STEP_DELAY)
+        success = score >= 0.8
 
-    print(f"  FINAL SCORE: {final_score:.4f}  |  Steps: {steps}")
+    finally:
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
     return {
         "task_id": task_id,
-        "difficulty": task["difficulty"],
-        "final_score": final_score,
-        "steps": steps,
+        "score": score,
+        "steps": steps_taken,
+        "success": success,
     }
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+def main() -> None:
+    if not API_KEY:
+        raise RuntimeError("Set OPENAI_API_KEY or HF_TOKEN before running inference.py")
 
-def main():
-    print("=" * 60)
-    print("AI Customer Support Resolution Environment — Inference")
-    print(f"LLM endpoint : {LLM_BASE_URL}")
-    print(f"Model        : {MODEL_NAME}")
-    print(f"Env server   : {ENV_BASE_URL}")
-    print("=" * 60)
-
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
     tasks = env_get_tasks()
-    print(f"Found {len(tasks)} tasks.\n")
 
-    results = []
-    for task in tasks:
-        try:
-            result = run_task(task)
-            results.append(result)
-        except Exception as e:
-            print(f"  ERROR on task {task['task_id']}: {e}")
-            results.append({
-                "task_id": task["task_id"],
-                "difficulty": task["difficulty"],
-                "final_score": 0.0,
-                "steps": -1,
-                "error": str(e),
-            })
+    results = [run_task(client, task) for task in tasks]
 
-    # ── Summary ──────────────────────────────────────────────────────────────
-    print("\n" + "=" * 60)
-    print("RESULTS SUMMARY")
-    print("=" * 60)
-    for r in results:
-        status = f"score={r['final_score']:.4f}  steps={r['steps']}"
-        if "error" in r:
-            status = f"ERROR: {r['error']}"
-        print(f"  {r['task_id']:<40} [{r['difficulty']:<6}]  {status}")
-
-    scores = [r["final_score"] for r in results if "error" not in r]
-    if scores:
-        avg = sum(scores) / len(scores)
-        print(f"\n  Average score across {len(scores)} tasks: {avg:.4f}")
-
-    # Save results
-    with open("inference_results.json", "w") as f:
+    with open("inference_results.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
-    print("\nResults saved to inference_results.json")
 
 
 if __name__ == "__main__":

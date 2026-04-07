@@ -6,6 +6,9 @@ colorTo: red
 sdk: docker
 pinned: false
 short_description: "TinyCoders"
+tags:
+  - openenv
+  - rl-environment
 ---
 
 # 🎫 AI Customer Support Resolution Environment
@@ -173,10 +176,16 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 7860 --reload
 
 # 4. Run baseline inference (requires OpenAI key or HF endpoint)
-API_BASE_URL=https://api.openai.com/v1 \
-MODEL_NAME=gpt-4o-mini \
+OPENAI_API_KEY=<your_key_or_router_token> \
+HF_TOKEN=<optional_hf_token> \
+API_BASE_URL=https://router.huggingface.co/v1 \
+MODEL_NAME=Qwen/Qwen2.5-72B-Instruct \
+ENV_BASE_URL=http://localhost:7860 \
 python inference.py
 ```
+
+Inference logs are emitted in strict evaluator format:
+`[START]`, `[STEP]`, `[END]`.
 
 ### Docker
 

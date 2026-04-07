@@ -11,7 +11,7 @@ from typing import Optional, List
 import copy
 
 from app.models import (
-    Action, ActionType, Observation, Reward,
+    Action, ActionType, Observation,
     SentimentLevel, TicketStatus,
     StepResponse, StateResponse, ResetResponse,
 )
@@ -143,19 +143,20 @@ class CustomerSupportEnv:
         # ------------------------------------------------------------------
         obs = self._build_observation(info_message=reward_feedback)
 
-        reward_obj = Reward(
-            step_reward=round(step_reward, 4),
-            cumulative_reward=round(self._cumulative_reward, 4),
-            done=self._done,
-            score=final_score if self._done else 0.0,
-            feedback=(
-                f"{reward_feedback} | Grade: {grade_feedback}"
-                if self._done
-                else reward_feedback
-            ),
+        info_message = (
+            f"{reward_feedback} | Grade: {grade_feedback}"
+            if self._done
+            else reward_feedback
         )
 
-        return StepResponse(observation=obs, reward=reward_obj)
+        return StepResponse(
+            observation=obs,
+            reward=round(step_reward, 4),
+            done=self._done,
+            info=info_message,
+            score=final_score if self._done else 0.0,
+            cumulative_reward=round(self._cumulative_reward, 4),
+        )
 
     def state(self) -> StateResponse:
         """Return a read-only snapshot of the current episode state."""

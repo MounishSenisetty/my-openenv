@@ -3,7 +3,7 @@ Pydantic models for the AI Customer Support Resolution Environment.
 Defines the core data structures: Observation, Action, and Reward.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from enum import Enum
 from pydantic import BaseModel, Field
 
@@ -100,30 +100,22 @@ class Observation(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Reward — per-step and cumulative
-# ---------------------------------------------------------------------------
-
-class Reward(BaseModel):
-    """Reward signal returned after each step."""
-    step_reward: float = Field(..., description="Reward earned in this single step.")
-    cumulative_reward: float = Field(..., description="Total reward accumulated this episode.")
-    done: bool = Field(..., description="Whether the episode has ended.")
-    score: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="Normalised task score in [0, 1] — only meaningful when done=True.",
-    )
-    feedback: str = Field(..., description="Human-readable explanation of the reward signal.")
-
-
-# ---------------------------------------------------------------------------
 # API-level wrappers
 # ---------------------------------------------------------------------------
 
 class StepResponse(BaseModel):
+    """OpenEnv-style step output with explicit done/info fields."""
     observation: Observation
-    reward: Reward
+    reward: float = Field(..., description="Per-step reward scalar.")
+    done: bool = Field(..., description="Whether the episode has ended.")
+    info: str = Field(..., description="Feedback string for this transition.")
+    score: float = Field(
+        0.0,
+        ge=0.0,
+        le=1.0,
+        description="Normalised task score in [0, 1]. Meaningful when done=True.",
+    )
+    cumulative_reward: float = Field(..., description="Running total reward for this episode.")
 
 
 class StateResponse(BaseModel):

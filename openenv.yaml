@@ -56,13 +56,9 @@ action:
 
 # ── Reward schema ────────────────────────────────────────────────────────────
 reward:
-  type: object
-  properties:
-    step_reward:        { type: number }
-    cumulative_reward:  { type: number }
-    done:               { type: boolean }
-    score:              { type: number, minimum: 0.0, maximum: 1.0 }
-    feedback:           { type: string }
+  type: number
+  minimum: -10.0
+  maximum: 10.0
 
 # ── API endpoints ─────────────────────────────────────────────────────────────
 endpoints:
