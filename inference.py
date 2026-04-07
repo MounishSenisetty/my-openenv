@@ -14,6 +14,11 @@ API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 ENV_BASE_URL = os.getenv("ENV_BASE_URL") or "http://localhost:7860"
 BENCHMARK = "ai-customer-support-resolution"
+DEFAULT_TASK_IDS = [
+    "task_1_classify",
+    "task_2b_technical_path",
+    "task_3c_ambiguous_ticket",
+]
 MAX_STEPS = 10
 TEMPERATURE = 0.0
 MAX_TOKENS = 128
@@ -97,6 +102,13 @@ def choose_action(client: OpenAI, observation: dict, task_description: str) -> s
     return cleaned
 
 
+def choose_fallback_action(observation: dict) -> str:
+    available_actions = observation.get("available_actions", []) or []
+    if available_actions:
+        return str(available_actions[0])
+    return "close_ticket"
+
+
 def run_task(client: OpenAI, task: dict) -> dict:
     task_id = task["task_id"]
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -113,7 +125,17 @@ def run_task(client: OpenAI, task: dict) -> dict:
         task_description = reset_data["task_description"]
 
         for step_num in range(1, MAX_STEPS + 1):
-            action = choose_action(client, observation, task_description)
+            action_error: Optional[str] = None
+            try:
+                action = choose_action(client, observation, task_description)
+            except Exception as exc:
+                action = choose_fallback_action(observation)
+                action_error = str(exc)
+
+            if action not in observation.get("available_actions", []):
+                action = choose_fallback_action(observation)
+                if not action_error:
+                    action_error = "model_action_not_in_available_actions"
 
             try:
                 step_data = env_step(action)
@@ -121,11 +143,11 @@ def run_task(client: OpenAI, task: dict) -> dict:
                 done = bool(step_data.get("done", False))
                 observation = step_data["observation"]
                 score = float(step_data.get("score", 0.0))
-                last_error = None
+                last_error = action_error
             except Exception as exc:
                 reward = 0.0
                 done = True
-                last_error = str(exc)
+                last_error = action_error or str(exc)
 
             rewards.append(reward)
             steps_taken = step_num
@@ -137,6 +159,11 @@ def run_task(client: OpenAI, task: dict) -> dict:
             time.sleep(0.2)
 
         success = score >= 0.8
+
+    except Exception as exc:
+        steps_taken = max(steps_taken, 1)
+        rewards.append(0.0)
+        log_step(step=steps_taken, action="close_ticket", reward=0.0, done=True, error=str(exc))
 
     finally:
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
@@ -150,16 +177,32 @@ def run_task(client: OpenAI, task: dict) -> dict:
 
 
 def main() -> None:
-    if not API_KEY:
-        raise RuntimeError("Set OPENAI_API_KEY or HF_TOKEN before running inference.py")
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "missing-api-key")
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-    tasks = env_get_tasks()
+    try:
+        tasks = env_get_tasks()
+    except Exception:
+        tasks = [{"task_id": task_id} for task_id in DEFAULT_TASK_IDS]
 
-    results = [run_task(client, task) for task in tasks]
+    results: List[dict] = []
+    for task in tasks:
+        try:
+            results.append(run_task(client, task))
+        except Exception:
+            results.append(
+                {
+                    "task_id": task.get("task_id", "unknown_task"),
+                    "score": 0.0,
+                    "steps": 0,
+                    "success": False,
+                }
+            )
 
-    with open("inference_results.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2)
+    try:
+        with open("inference_results.json", "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
