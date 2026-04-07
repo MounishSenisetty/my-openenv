@@ -129,13 +129,14 @@ class CustomerSupportEnv:
             is_done=next_done,
             final_score=final_score,
         )
+        bounded_step_reward = max(0.0, min(1.0, step_reward))
 
         # ------------------------------------------------------------------
         # Apply state transitions
         # ------------------------------------------------------------------
         self._steps_taken.append(action_type)
         self._current_status = next_status(self._current_status, action_type)
-        self._cumulative_reward += step_reward
+        self._cumulative_reward += bounded_step_reward
         self._done = next_done
 
         # ------------------------------------------------------------------
@@ -151,7 +152,7 @@ class CustomerSupportEnv:
 
         return StepResponse(
             observation=obs,
-            reward=round(step_reward, 4),
+            reward=round(bounded_step_reward, 4),
             done=self._done,
             info=info_message,
             score=final_score if self._done else 0.0,
