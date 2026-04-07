@@ -1,0 +1,333 @@
+{
+  "info": {
+    "name": "OpenEnv Hackathon Checks",
+    "_postman_id": "b8d8700e-7f7f-4e74-9b2a-1e7d7fd30f2a",
+    "description": "Validation flow for OpenEnv customer support environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://mounishmou-myenv.hf.space" },
+    { "key": "task_id", "value": "task_1_classify" },
+    { "key": "action_type", "value": "classify_billing" }
+  ],
+  "item": [
+    {
+      "name": "01 Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const j = pm.response.json();",
+              "pm.test('Has status ok', function () {",
+              "  pm.expect(j.status).to.eql('ok');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Tasks",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/tasks",
+          "host": ["{{base_url}}"],
+          "path": ["tasks"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const j = pm.response.json();",
+              "pm.test('Has tasks array', function () {",
+              "  pm.expect(j.tasks).to.be.an('array');",
+              "  pm.expect(j.tasks.length).to.be.above(2);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Reset",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"task_id\": \"{{task_id}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/reset",
+          "host": ["{{base_url}}"],
+          "path": ["reset"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const j = pm.response.json();",
+              "pm.test('Reset payload has observation', function () {",
+              "  pm.expect(j).to.have.property('observation');",
+              "  pm.expect(j).to.have.property('task_id');",
+              "  pm.expect(j).to.have.property('task_description');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Step",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"action_type\": \"{{action_type}}\",\n  \"reasoning\": \"postman validation run\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/step",
+          "host": ["{{base_url}}"],
+          "path": ["step"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const j = pm.response.json();",
+              "pm.test('Step payload shape', function () {",
+              "  pm.expect(j).to.have.property('observation');",
+              "  pm.expect(j).to.have.property('reward');",
+              "  pm.expect(j).to.have.property('done');",
+              "  pm.expect(j).to.have.property('info');",
+              "  pm.expect(j).to.have.property('score');",
+              "  pm.expect(j).to.have.property('cumulative_reward');",
+              "});",
+              "pm.test('Score in [0,1]', function () {",
+              "  pm.expect(j.score).to.be.at.least(0);",
+              "  pm.expect(j.score).to.be.at.most(1);",
+              "});",
+              "pm.test('Done is boolean', function () {",
+              "  pm.expect(typeof j.done).to.eql('boolean');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 State GET",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/state",
+          "host": ["{{base_url}}"],
+          "path": ["state"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const j = pm.response.json();",
+              "pm.test('State payload shape', function () {",
+              "  pm.expect(j).to.have.property('observation');",
+              "  pm.expect(j).to.have.property('cumulative_reward');",
+              "  pm.expect(j).to.have.property('episode_steps');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 State POST",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{base_url}}/state",
+          "host": ["{{base_url}}"],
+          "path": ["state"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const j = pm.response.json();",
+              "pm.test('State payload shape', function () {",
+              "  pm.expect(j).to.have.property('observation');",
+              "  pm.expect(j).to.have.property('cumulative_reward');",
+              "  pm.expect(j).to.have.property('episode_steps');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Full Flow Medium",
+      "item": [
+        {
+          "name": "Flow Reset task_2b",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": \"task_2b_technical_path\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/reset",
+              "host": ["{{base_url}}"],
+              "path": ["reset"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Flow Step classify_technical",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action_type\": \"classify_technical\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/step",
+              "host": ["{{base_url}}"],
+              "path": ["step"]
+            }
+          }
+        },
+        {
+          "name": "Flow Step reset_password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action_type\": \"reset_password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/step",
+              "host": ["{{base_url}}"],
+              "path": ["step"]
+            }
+          }
+        },
+        {
+          "name": "Flow Step close_ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action_type\": \"close_ticket\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/step",
+              "host": ["{{base_url}}"],
+              "path": ["step"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Final step done true', function () {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.done).to.eql(true);",
+                  "});",
+                  "pm.test('Final score in [0,1]', function () {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.score).to.be.at.least(0);",
+                  "  pm.expect(j.score).to.be.at.most(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
