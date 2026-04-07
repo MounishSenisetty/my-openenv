@@ -5,7 +5,7 @@ Endpoints
 ---------
 POST /reset          → ResetResponse
 POST /step           → StepResponse
-GET  /state          → StateResponse
+GET/POST /state      → StateResponse
 GET  /tasks          → list of available tasks
 GET  /health         → liveness probe
 """
@@ -107,3 +107,9 @@ def state():
         return env.state()
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/state", response_model=StateResponse)
+def state_post():
+    """POST alias for state() to support strict validator flows."""
+    return state()
