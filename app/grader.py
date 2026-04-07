@@ -15,6 +15,13 @@ Hard   → weighted composite:
 
 from typing import List, Tuple
 
+STRICT_SCORE_EPS = 0.001
+
+
+def _strict_score(score: float) -> float:
+    """Clamp scores to strict open interval (0, 1)."""
+    return min(1.0 - STRICT_SCORE_EPS, max(STRICT_SCORE_EPS, score))
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -181,10 +188,12 @@ def grade(
 ) -> Tuple[float, str]:
     """Route to the correct grader based on task difficulty."""
     if difficulty == "easy":
-        return grade_easy(steps_taken, goal_actions)
+        score, feedback = grade_easy(steps_taken, goal_actions)
     elif difficulty == "medium":
-        return grade_medium(steps_taken, goal_actions)
+        score, feedback = grade_medium(steps_taken, goal_actions)
     elif difficulty == "hard":
-        return grade_hard(steps_taken, goal_actions, max_steps, sla_steps)
+        score, feedback = grade_hard(steps_taken, goal_actions, max_steps, sla_steps)
     else:
         raise ValueError(f"Unknown difficulty: {difficulty!r}")
+
+    return round(_strict_score(score), 4), feedback

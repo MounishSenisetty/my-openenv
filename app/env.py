@@ -21,6 +21,12 @@ from app.utils import (
     get_valid_actions, next_status, compute_step_reward,
 )
 
+STRICT_SCORE_EPS = 0.001
+
+
+def strict_score(score: float) -> float:
+    return min(1.0 - STRICT_SCORE_EPS, max(STRICT_SCORE_EPS, score))
+
 
 class CustomerSupportEnv:
     """
@@ -155,7 +161,7 @@ class CustomerSupportEnv:
             reward=round(bounded_step_reward, 4),
             done=self._done,
             info=info_message,
-            score=final_score if self._done else 0.0,
+            score=strict_score(final_score) if self._done else 0.0,
             cumulative_reward=round(self._cumulative_reward, 4),
         )
 

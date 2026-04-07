@@ -22,6 +22,7 @@ DEFAULT_TASK_IDS = [
 MAX_STEPS = 10
 TEMPERATURE = 0.0
 MAX_TOKENS = 128
+STRICT_SCORE_EPS = 0.001
 
 
 SYSTEM_PROMPT = (
@@ -109,6 +110,10 @@ def choose_fallback_action(observation: dict) -> str:
     return "close_ticket"
 
 
+def strict_score(score: float) -> float:
+    return min(1.0 - STRICT_SCORE_EPS, max(STRICT_SCORE_EPS, score))
+
+
 def run_task(client: OpenAI, task: dict) -> dict:
     task_id = task["task_id"]
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -158,11 +163,13 @@ def run_task(client: OpenAI, task: dict) -> dict:
 
             time.sleep(0.2)
 
+        score = strict_score(score)
         success = score >= 0.8
 
     except Exception as exc:
         steps_taken = max(steps_taken, 1)
         rewards.append(0.0)
+        score = strict_score(score)
         log_step(step=steps_taken, action="close_ticket", reward=0.0, done=True, error=str(exc))
 
     finally:
@@ -192,7 +199,7 @@ def main() -> None:
             results.append(
                 {
                     "task_id": task.get("task_id", "unknown_task"),
-                    "score": 0.0,
+                    "score": strict_score(0.0),
                     "steps": 0,
                     "success": False,
                 }
