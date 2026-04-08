@@ -21,6 +21,9 @@ class ActionType(str, Enum):
 
     # Information gathering
     REQUEST_MORE_INFO   = "request_more_info"
+    FETCH_CUSTOMER_HISTORY = "fetch_customer_history"
+    CHECK_SERVICE_STATUS = "check_service_status"
+    VERIFY_BILLING_LEDGER = "verify_billing_ledger"
 
     # Resolution actions
     ISSUE_REFUND        = "issue_refund"
@@ -96,6 +99,26 @@ class Observation(BaseModel):
     info_message: Optional[str] = Field(
         None,
         description="Contextual feedback from the environment after the last action.",
+    )
+    known_facts: List[str] = Field(
+        default_factory=list,
+        description="Facts revealed via investigation actions.",
+    )
+    hidden_context_revealed: bool = Field(
+        False,
+        description="Whether at least one hidden context signal has been revealed.",
+    )
+    risk_flags: List[str] = Field(
+        default_factory=list,
+        description="Derived risk indicators from revealed evidence.",
+    )
+    investigation_steps_used: int = Field(
+        0,
+        description="Number of investigation actions performed in this episode.",
+    )
+    decision_trace: List[str] = Field(
+        default_factory=list,
+        description="Compact trace of decision-relevant actions taken.",
     )
 
 

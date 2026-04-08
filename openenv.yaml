@@ -29,6 +29,11 @@ observation:
     available_actions:  { type: array, items: { type: string } }
     sla_steps_remaining:{ type: integer }
     info_message:       { type: string, nullable: true }
+    known_facts:        { type: array, items: { type: string } }
+    hidden_context_revealed: { type: boolean }
+    risk_flags:         { type: array, items: { type: string } }
+    investigation_steps_used: { type: integer }
+    decision_trace:     { type: array, items: { type: string } }
 
 # ── Action schema ────────────────────────────────────────────────────────────
 action:
@@ -43,6 +48,9 @@ action:
         - classify_refund
         - classify_general
         - request_more_info
+        - fetch_customer_history
+        - check_service_status
+        - verify_billing_ledger
         - issue_refund
         - apply_billing_credit
         - restart_service
@@ -139,6 +147,27 @@ tasks:
       Handle an ambiguous ticket. Classify as general, gather more info, close cleanly.
     max_steps: 6
     sla_steps: 4
+    score_range: [0.001, 0.999]
+
+  - id: task_4_enterprise_rca_tradeoff
+    difficulty: hard
+    description: Enterprise outage with evidence-first triage and escalation trade-offs.
+    max_steps: 9
+    sla_steps: 6
+    score_range: [0.001, 0.999]
+
+  - id: task_4b_billing_compliance_tradeoff
+    difficulty: hard
+    description: Billing dispute with chargeback/compliance trade-offs and evidence requirements.
+    max_steps: 8
+    sla_steps: 6
+    score_range: [0.001, 0.999]
+
+  - id: task_4c_ambiguous_multisignal_resolution
+    difficulty: hard
+    description: Multi-signal ambiguous case requiring both technical and billing investigation.
+    max_steps: 9
+    sla_steps: 7
     score_range: [0.001, 0.999]
 
 # ── Resource requirements ──────────────────────────────────────────────────────

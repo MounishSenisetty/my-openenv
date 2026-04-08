@@ -173,6 +173,7 @@ def run_task(client: OpenAI, task: dict) -> dict:
         log_step(step=steps_taken, action="close_ticket", reward=0.0, done=True, error=str(exc))
 
     finally:
+        score = strict_score(score)
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
     return {

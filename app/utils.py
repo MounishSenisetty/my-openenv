@@ -34,6 +34,9 @@ VALID_ACTIONS_BY_STATUS: Dict[str, List[str]] = {
         ActionType.CLASSIFY_REFUND,
         ActionType.CLASSIFY_GENERAL,
         ActionType.REQUEST_MORE_INFO,
+        ActionType.FETCH_CUSTOMER_HISTORY,
+        ActionType.CHECK_SERVICE_STATUS,
+        ActionType.VERIFY_BILLING_LEDGER,
         ActionType.ESCALATE_TO_HUMAN,
     ],
     TicketStatus.IN_PROGRESS: [
@@ -43,6 +46,9 @@ VALID_ACTIONS_BY_STATUS: Dict[str, List[str]] = {
         ActionType.SEND_TECHNICAL_GUIDE,
         ActionType.RESET_PASSWORD,
         ActionType.REQUEST_MORE_INFO,
+        ActionType.FETCH_CUSTOMER_HISTORY,
+        ActionType.CHECK_SERVICE_STATUS,
+        ActionType.VERIFY_BILLING_LEDGER,
         ActionType.ESCALATE_TO_HUMAN,
         ActionType.CLOSE_TICKET,
     ],
@@ -52,6 +58,8 @@ VALID_ACTIONS_BY_STATUS: Dict[str, List[str]] = {
         ActionType.RESTART_SERVICE,
         ActionType.SEND_TECHNICAL_GUIDE,
         ActionType.RESET_PASSWORD,
+        ActionType.CHECK_SERVICE_STATUS,
+        ActionType.VERIFY_BILLING_LEDGER,
         ActionType.CLOSE_TICKET,
     ],
     TicketStatus.RESOLVED: [
@@ -119,6 +127,9 @@ def compute_step_reward(
     sentiment: str,
     is_done: bool,
     final_score: float,
+    repeated_count: int = 0,
+    investigation_steps: int = 0,
+    required_investigation_actions: List[str] | None = None,
 ) -> tuple[float, str]:
     """
     Dense reward function.
@@ -137,9 +148,12 @@ def compute_step_reward(
     smod = sentiment_modifier(sentiment)
     step_index = len(steps_taken)  # 0-based index of the action about to be taken
 
-    # Check for repeated action
+    # Check for repeated action (anti-loop shaping)
     if action_type in steps_taken:
         reward = -0.2 + smod
+        if repeated_count >= 2:
+            reward -= 0.1
+            return round(reward, 4), "Looping repeated action penalty."
         return round(reward, 4), "Repeated action — no value added."
 
     # Check if action matches the expected position in goal_actions
@@ -163,14 +177,40 @@ def compute_step_reward(
         ActionType.RESET_PASSWORD,
         ActionType.CLOSE_TICKET,
     }
+    investigation_actions = {
+        ActionType.REQUEST_MORE_INFO,
+        ActionType.FETCH_CUSTOMER_HISTORY,
+        ActionType.CHECK_SERVICE_STATUS,
+        ActionType.VERIFY_BILLING_LEDGER,
+    }
     if action_type in {a.value for a in progress_actions}:
         reward += 0.3
         feedback += " +Progress bonus."
+    elif action_type in {a.value for a in investigation_actions}:
+        reward += 0.08
+        feedback += " +Information gain bonus."
 
     # Unnecessary escalation penalty
     if action_type == ActionType.ESCALATE_TO_HUMAN and ActionType.ESCALATE_TO_HUMAN not in goal_actions:
         reward -= 0.3
         feedback += " Unnecessary escalation penalty."
+
+    required_investigation_actions = required_investigation_actions or []
+    if (
+        action_type == ActionType.ESCALATE_TO_HUMAN
+        and required_investigation_actions
+        and investigation_steps == 0
+    ):
+        reward -= 0.12
+        feedback += " Blind escalation penalty."
+
+    if (
+        action_type == ActionType.CLOSE_TICKET
+        and required_investigation_actions
+        and investigation_steps == 0
+    ):
+        reward -= 0.15
+        feedback += " Premature close penalty."
 
     # Terminal bonus
     if is_done and final_score >= 0.8:

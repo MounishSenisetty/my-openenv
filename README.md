@@ -282,4 +282,41 @@ customer_support_env/
 - RAM: 2 GB (well within 8 GB limit)  
 - GPU: Not required  
 - Inference time: < 5 minutes for all 8 tasks
+
+---
+
+## 🧭 Why This Benchmark Matters
+
+Customer support automation is not a toy problem. Production agents must handle
+ambiguity, policy constraints, and high-stakes trade-offs under partial
+information. This benchmark is designed to evaluate exactly that.
+
+### Real-world value
+
+- Models enterprise support realities: SLA pressure, escalation decisions,
+  compliance-sensitive billing outcomes, and customer sentiment effects.
+- Rewards evidence-first triage instead of brittle one-shot action templates.
+- Penalizes exploitative policies such as blind escalation loops and premature
+  closure.
+
+### Novel benchmark mechanics
+
+- **Partial observability**: hidden context is revealed only through
+  investigation actions (`fetch_customer_history`, `check_service_status`,
+  `verify_billing_ledger`).
+- **Multi-path hard tasks**: advanced tasks allow multiple valid solution
+  trajectories, reducing overfitting to a single scripted path.
+- **Delayed consequences**: early shortcuts can hurt terminal score via
+  deterministic anti-exploit penalties.
+- **RL-ready shaping**: dense per-step reward with deterministic terminal
+  grading, suitable for both online and offline policy evaluation.
+
+### Research and evaluation fit
+
+- Deterministic, reproducible scoring in strict `(0, 1)` range for fair model
+  comparison.
+- OpenEnv-compliant API and typed schemas enable drop-in use with standard
+  evaluators.
+- Designed to stress-test frontier LLM agents on planning under uncertainty,
+  not just action memorization.
 # Build triggered at 2026-03-29 00:18:34

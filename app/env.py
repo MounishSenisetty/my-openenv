@@ -50,6 +50,12 @@ class CustomerSupportEnv:
         self._cumulative_reward: float = 0.0
         self._current_status: str = TicketStatus.OPEN
         self._done: bool = False
+        self._history_revealed: bool = False
+        self._known_facts: List[str] = []
+        self._risk_flags: List[str] = []
+        self._investigation_steps: int = 0
+        self._decision_trace: List[str] = []
+        self._action_counts: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -79,6 +85,12 @@ class CustomerSupportEnv:
         self._cumulative_reward = 0.0
         self._current_status = TicketStatus.OPEN
         self._done = False
+        self._history_revealed = False
+        self._known_facts = []
+        self._risk_flags = []
+        self._investigation_steps = 0
+        self._decision_trace = []
+        self._action_counts = {}
 
         obs = self._build_observation()
         return ResetResponse(
@@ -101,6 +113,7 @@ class CustomerSupportEnv:
         max_steps = self._task["max_steps"]
         sla_steps = self._task["sla_steps"]
         sentiment = self._ticket["sentiment"]
+        repeated_count = self._action_counts.get(action_type, 0)
 
         # ------------------------------------------------------------------
         # Determine done condition BEFORE updating state
@@ -121,6 +134,8 @@ class CustomerSupportEnv:
             goal_actions=goal_actions,
             max_steps=max_steps,
             sla_steps=sla_steps,
+            valid_paths=self._task.get("valid_paths"),
+            required_investigation_actions=self._task.get("required_investigation_actions"),
         ) if next_done else (0.0, "")
 
         # ------------------------------------------------------------------
@@ -134,13 +149,22 @@ class CustomerSupportEnv:
             sentiment=sentiment,
             is_done=next_done,
             final_score=final_score,
+            repeated_count=repeated_count,
+            investigation_steps=self._investigation_steps,
+            required_investigation_actions=self._task.get("required_investigation_actions", []),
         )
         bounded_step_reward = max(0.0, min(1.0, step_reward))
+
+        investigation_feedback = self._apply_investigation(action_type)
+        if investigation_feedback:
+            reward_feedback = f"{reward_feedback} {investigation_feedback}".strip()
 
         # ------------------------------------------------------------------
         # Apply state transitions
         # ------------------------------------------------------------------
         self._steps_taken.append(action_type)
+        self._action_counts[action_type] = repeated_count + 1
+        self._decision_trace.append(f"{len(self._steps_taken)}:{action_type}")
         self._current_status = next_status(self._current_status, action_type)
         self._cumulative_reward += bounded_step_reward
         self._done = next_done
@@ -187,11 +211,46 @@ class CustomerSupportEnv:
         return Observation(
             ticket_id=self._ticket["ticket_id"],
             customer_message=self._ticket["customer_message"],
-            customer_history=self._ticket["customer_history"],
+            customer_history=(
+                self._ticket["customer_history"] if self._history_revealed else []
+            ),
             sentiment=SentimentLevel(self._ticket["sentiment"]),
             current_status=TicketStatus(self._current_status),
             steps_taken=list(self._steps_taken),
             available_actions=get_valid_actions(self._current_status),
             sla_steps_remaining=sla_remaining,
             info_message=info_message,
+            known_facts=list(self._known_facts),
+            hidden_context_revealed=bool(self._known_facts),
+            risk_flags=list(self._risk_flags),
+            investigation_steps_used=self._investigation_steps,
+            decision_trace=list(self._decision_trace),
         )
+
+    def _apply_investigation(self, action_type: str) -> str:
+        """Reveal hidden deterministic context through investigation actions."""
+        hidden_context = self._ticket.get("hidden_context", {})
+        feedback_parts: List[str] = []
+
+        if action_type == ActionType.FETCH_CUSTOMER_HISTORY:
+            self._history_revealed = True
+
+        if action_type in {
+            ActionType.REQUEST_MORE_INFO,
+            ActionType.FETCH_CUSTOMER_HISTORY,
+            ActionType.CHECK_SERVICE_STATUS,
+            ActionType.VERIFY_BILLING_LEDGER,
+        }:
+            self._investigation_steps += 1
+
+        if action_type in hidden_context:
+            payload = hidden_context[action_type]
+            for fact in payload.get("facts", []):
+                if fact not in self._known_facts:
+                    self._known_facts.append(fact)
+            for flag in payload.get("risk_flags", []):
+                if flag not in self._risk_flags:
+                    self._risk_flags.append(flag)
+            feedback_parts.append("Investigation revealed hidden context.")
+
+        return " ".join(feedback_parts)

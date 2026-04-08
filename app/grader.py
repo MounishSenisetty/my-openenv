@@ -13,7 +13,7 @@ Hard   → weighted composite:
            30 % efficiency   (penalty for extra / redundant steps)
 """
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 STRICT_SCORE_EPS = 0.001
 
@@ -118,6 +118,8 @@ def grade_hard(
     goal_actions: List[str],
     max_steps: int,
     sla_steps: int,
+    valid_paths: Optional[List[List[str]]] = None,
+    required_investigation_actions: Optional[List[str]] = None,
 ) -> Tuple[float, str]:
     """
     Weighted composite score:
@@ -132,22 +134,38 @@ def grade_hard(
     if not steps_taken:
         return 0.0, "No actions taken."
 
-    goal_set = set(goal_actions)
     taken_set = set(steps_taken)
+    candidate_paths = valid_paths if valid_paths else [goal_actions]
 
-    # 1. Correctness: fraction of goal actions the agent performed
-    correct_count = len(goal_set & taken_set)
-    correctness = correct_count / len(goal_actions)
-
-    # 2. Sequence quality via LCS
-    lcs_len = _longest_common_subsequence(steps_taken, goal_actions)
-    sequence_score = lcs_len / len(goal_actions)
+    # Evaluate against all valid paths and keep best deterministic candidate.
+    best_correctness = 0.0
+    best_sequence = 0.0
+    best_path_len = len(goal_actions)
+    for candidate in candidate_paths:
+        candidate_set = set(candidate)
+        correct_count = len(candidate_set & taken_set)
+        correctness = correct_count / max(len(candidate), 1)
+        lcs_len = _longest_common_subsequence(steps_taken, candidate)
+        sequence_score = lcs_len / max(len(candidate), 1)
+        if correctness + sequence_score > best_correctness + best_sequence:
+            best_correctness = correctness
+            best_sequence = sequence_score
+            best_path_len = len(candidate)
 
     # 3. Efficiency: penalise extra steps
-    extra_steps = max(0, len(steps_taken) - len(goal_actions))
+    extra_steps = max(0, len(steps_taken) - best_path_len)
     efficiency = max(0.0, 1.0 - (extra_steps / max(max_steps, 1)))
 
-    composite = 0.4 * correctness + 0.3 * sequence_score + 0.3 * efficiency
+    composite = 0.4 * best_correctness + 0.3 * best_sequence + 0.3 * efficiency
+
+    # Investigation coverage bonus for tasks with partial observability.
+    investigation_bonus = 0.0
+    required_investigation_actions = required_investigation_actions or []
+    if required_investigation_actions:
+        covered = len(set(required_investigation_actions) & taken_set)
+        coverage = covered / len(required_investigation_actions)
+        investigation_bonus = 0.08 * coverage
+        composite += investigation_bonus
 
     # SLA breach penalty
     sla_penalty = 0.0
@@ -163,10 +181,12 @@ def grade_hard(
     score = min(1.0, round(score, 4))
 
     feedback_parts = [
-        f"Correctness: {correctness:.2f}",
-        f"Sequence: {sequence_score:.2f}",
+        f"Correctness: {best_correctness:.2f}",
+        f"Sequence: {best_sequence:.2f}",
         f"Efficiency: {efficiency:.2f}",
     ]
+    if required_investigation_actions:
+        feedback_parts.append(f"Investigation bonus: +{investigation_bonus:.3f}")
     if sla_penalty:
         feedback_parts.append(f"SLA breach penalty: -{sla_penalty}")
     if escalation_penalty:
@@ -185,6 +205,8 @@ def grade(
     goal_actions: List[str],
     max_steps: int = 8,
     sla_steps: int = 6,
+    valid_paths: Optional[List[List[str]]] = None,
+    required_investigation_actions: Optional[List[str]] = None,
 ) -> Tuple[float, str]:
     """Route to the correct grader based on task difficulty."""
     if difficulty == "easy":
@@ -192,7 +214,14 @@ def grade(
     elif difficulty == "medium":
         score, feedback = grade_medium(steps_taken, goal_actions)
     elif difficulty == "hard":
-        score, feedback = grade_hard(steps_taken, goal_actions, max_steps, sla_steps)
+        score, feedback = grade_hard(
+            steps_taken,
+            goal_actions,
+            max_steps,
+            sla_steps,
+            valid_paths=valid_paths,
+            required_investigation_actions=required_investigation_actions,
+        )
     else:
         raise ValueError(f"Unknown difficulty: {difficulty!r}")
 
