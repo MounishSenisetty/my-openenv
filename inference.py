@@ -9,9 +9,25 @@ import requests
 from openai import OpenAI
 
 
-API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN")
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = OPENAI_API_KEY or HF_TOKEN
+
+_api_base_url_env = os.getenv("API_BASE_URL")
+if _api_base_url_env:
+    API_BASE_URL = _api_base_url_env
+elif HF_TOKEN:
+    API_BASE_URL = "https://router.huggingface.co/v1"
+else:
+    API_BASE_URL = "https://api.openai.com/v1"
+
+_model_name_env = os.getenv("MODEL_NAME")
+if _model_name_env:
+    MODEL_NAME = _model_name_env
+elif "huggingface.co" in API_BASE_URL:
+    MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
+else:
+    MODEL_NAME = "gpt-4o-mini"
 ENV_BASE_URL = os.getenv("ENV_BASE_URL") or "http://localhost:7860"
 BENCHMARK = "ai-customer-support-resolution"
 DEFAULT_TASK_IDS = [
