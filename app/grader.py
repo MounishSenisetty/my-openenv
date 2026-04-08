@@ -135,6 +135,7 @@ def grade_hard(
         return 0.0, "No actions taken."
 
     taken_set = set(steps_taken)
+    goal_set = set(goal_actions)
     candidate_paths = valid_paths if valid_paths else [goal_actions]
 
     # Evaluate against all valid paths and keep best deterministic candidate.
