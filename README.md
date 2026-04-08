@@ -190,7 +190,6 @@ docker run -p 7860:7860 customer-support-env
 ## Validation Assets
 
 - `OpenEnv-Hackathon.postman_collection.json`
-- `OpenEnv-Phase2-Validation.postman_collection.json`
 
 Use these collections for repeatable endpoint and flow validation.
 
@@ -204,7 +203,6 @@ Use these collections for repeatable endpoint and flow validation.
 |-- openenv.yaml
 |-- requirements.txt
 |-- OpenEnv-Hackathon.postman_collection.json
-|-- OpenEnv-Phase2-Validation.postman_collection.json
 `-- app/
     |-- env.py
     |-- grader.py
